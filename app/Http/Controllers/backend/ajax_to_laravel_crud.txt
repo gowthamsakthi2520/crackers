@@ -1,0 +1,481 @@
+
+store function 
+=======================================================================================================
+  public function store(Request $request)
+    {
+
+        $validate = $request->validate([
+            'product_name' => 'required',
+            'product_description' => 'required',
+            'product_images' => 'required',
+            'regular_price' => 'required',
+            'sale_price' => 'required',
+            'stock' => 'required',
+            'category' => 'required',
+            'collection' => '',
+            'tags' => 'required',
+        ]);
+
+        $request->validate([
+            'brands' => 'required',
+            'sku' => 'required',
+            'price'=>'required'
+        ]);
+
+
+        try {
+            DB::beginTransaction();
+            $files = [];
+
+            if ($request->hasfile('product_images')) {
+
+                foreach ($request->file('product_images') as $file) {
+
+                    $name = time() . rand(1, 50) . '.' . $file->extension();
+
+                    $file->move(public_path('product_images'), $name);
+                    $files[] = 'product_images/' . $name;
+
+                }
+
+            }
+            $validate['product_images'] = implode(',', $files);
+
+
+
+            $product = Products::create($validate);
+            $brands = $request->brands;
+            $sku = $request->sku;
+
+            for ($i = 0; $i < count($request->brands); $i++) {
+                ProductVariant::create(['product_id' => $product->id, 'brand' => $brands[$i], 'sku' => $sku[$i],'price'=>$request->price[$i]]);
+            }
+
+            DB::commit();
+            $msg = "Product added successfully";
+            return redirect()->route('products.index')->with(['success' => $msg]);
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+
+    }
+
+
+ajax for method for form submit
+==================================================================================================
+
+
+@section('scripts')
+<script type="text/javascript">
+    $.ajaxSetup({
+        headers: {
+            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+        }
+    });
+
+</script>
+<script>
+    $('#add_products').submit(function (e) {
+        e.preventDefault();
+        var form = $('#add_products')[0];
+        var formData = new FormData(form);
+        console.log(formData);
+        var path = $('meta[name="base_url"]').attr('content') + '/products';
+        $.ajax({
+            url: "{{ route('products.store') }}",
+            type: 'POST',
+            processData: false,
+            contentType: false,
+            data: formData,
+            success: function (data) {
+                window.location.reload();
+                console.log('Added Successfully');
+            },
+            error: function (xhr) {
+
+                $('.err').html('');
+                $.each(xhr.responseJSON.errors, function (key, value) {
+                    $('.' + key).append('<div class="text-danger err">' + value + '</div');
+                });
+            },
+        });
+    })
+
+</script>
+
+custom column create and DELETE
+==================================================================================================
+
+<script>
+    $(document).on('click', '.add_varient', function () {
+        var html = "";
+        html += '<div class="row g-3" id="inputFormRow">';
+        html += '<div class="col-12">';
+        html += '<label for="Brand" class="form-label fw-bold">Brand</label>';
+        html +=' <input type="text" class="form-control" id="Brand" name="brands[]" placeholder="Add Brand" value="">';
+        html += '<span class="text-danger brands"></span>';
+        html += '</div>';
+        html += '<div class="col-12">';
+        html += '<label for="SKU" class="form-label fw-bold">SKU</label>';
+        html += ' <input type="text" class="form-control" id="SKU" name="sku[]" placeholder="Add SKU" value="">';
+        html += '<span class="text-danger sku"></span>';
+        html+='</div>';
+        html += '<div class="col-12">';
+        html += '<label for="PRICE" class="form-label fw-bold">PRICE</label>';
+        html += ' <input type="number" class="form-control" id="PRICE" name="price[]" placeholder="Add Price" value="">';
+        html += '<span class="text-danger price"></span>';
+        html+='</div>';
+        html += '<div class="col-12">';
+        html += '<button type="button" class="btn btn-danger mt-2 " id="Remove_button_row" >Remove</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>'
+        $('.AddrowVarient').append(html);
+
+    });
+
+    // Remove Row
+
+    $(document).on('click', '#Remove_button_row', function () {
+        $(this).closest('#inputFormRow').remove();
+    });
+
+</script>
+
+@endsection
+
+
+view blade 
+=====================================================================================================
+<div class="mt-40">
+  <table style="width:100%" class="user-view-table">
+    <tbody>
+      <tr>
+        <td colspan="2" class="fw-bolder bg-gray p10"> Product Information</td>
+      </tr>
+      <tr>
+        <th>Product Name</th>
+        <td>{{isset($product)?$product->product_name:''}}</td>
+      </tr>
+      <tr>
+        <th>Product Description</th>
+        <td>{{isset($product)?$product->product_description:''}}</td>
+      </tr>
+      <tr>
+        <th>Product Image</th>
+        <td>
+            @foreach(explode(',',$product->product_images) as $image)
+                 <img src="{{asset($image)}}" width="80px" alt="">
+            @endforeach 
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2" class="fw-bolder bg-gray p10">Organize</td>
+      </tr>
+      <tr>
+        <th>Category</th>
+        <td>{{isset($product)?$product->category_name->name:''}}</td>
+      </tr>
+
+      <tr>
+        <th>Tags</th>
+        <td>{{isset($product)?$product->tags:''}}</td>
+      </tr>
+
+      <tr>
+        <td colspan="2" class="fw-bolder bg-gray p10">Organize</td>
+      </tr>
+      <tr>
+        <th>Pricing</th>
+        <td>₹{{isset($product)?$product->sale_price:''}}</td>
+      </tr>
+      <tr>
+        <th>Stocks</th>
+        <td>{{isset($product)?$product->stock:''}}</td>
+      </tr>
+      <tr>
+        <td colspan="2" class="fw-bolder bg-gray p10">Varients</td>
+      </tr>
+      <tr>
+        <th>Brand</th>
+        <td>{{isset($product)?$product->product_variants->brand:''}}</td>
+      </tr>
+      
+      <tr>
+        <th>SKU</th>
+        <td>{{isset($product)?$product->product_variants->sku:''}}</td>
+      </tr>
+    </tbody>
+  </table>
+
+
+show function for controller
+=======================================================================================================
+    public function show(string $id)
+    {
+        try {
+
+            $category = Category::where('status', 'active')->get();
+            $product = Products::where('id', $id)->first();
+            return view('backend.products.view', compact('category', 'product'));
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+    }
+edit function for controller
+=======================================================================================================
+   public function edit(string $id)
+    {
+        try {
+            $product_update = Products::find($id);
+            $product_variants = $product_update->product_variants;
+
+            $category = Category::where('status', 'active')->get();
+            $product = Products::where('id', $id)->first();
+
+            $product_varient_count = ProductVariant::where('product_id', $product->id)->count();
+
+            return view('backend.products.edit', compact('category', 'product', 'product_variants'));
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+    }
+
+    update function for Laravel
+    ======================================================================================================
+    public function update(Request $request, string $id)
+    {
+        $validate = $request->validate([
+            'product_name' => 'required',
+            'product_description' => 'required',
+            'regular_price' => 'required',
+            'sale_price' => 'required',
+            'stock' => 'required',
+            'category' => 'required',
+            'collection' => '',
+            'tags' => 'required',
+        ]);
+        $request->validate([
+            'brands' => 'required',
+            'sku' => 'required',
+            'price'=>'required'
+        ]);
+
+        $product_update = Products::find($id);
+        $product_id = Products::where('id', $id)->first();
+        $varient_id = ProductVariant::where('product_id', $id)->get();
+
+
+        try {
+            DB::beginTransaction();
+            $files = [];
+            if ($request->hasfile('product_images')) {
+                foreach ($request->file('product_images') as $file) {
+                    $name = time() . rand(1, 50) . '.' . $file->extension();
+
+                    $file->move(public_path('product_images'), $name);
+                    $files[] = 'product_images/' . $name;
+                }
+                $validate['product_images'] = implode(',', $files);
+                $image = $product_update->product_images;
+                $remove = ltrim($image, 'product_images/');
+
+                if (File::exists(public_path('product_images/' . $remove))) {
+                    File::delete(public_path('product_images/' . $remove));
+                }
+            }
+
+            $product_var_count = ProductVariant::where('product_id', $id)->count();
+            $product_variant_del_id = ProductVariant::where('product_id', $id)->get();
+            for ($i = 0; $i < count($request->brands); $i++) {
+
+                if ($product_var_count == count($request->brands)) {
+                    ProductVariant::where('id', $request->product_var_id[$i])->update(['brand' => $request->brands[$i], 'sku' => $request->sku[$i],'price'=>$request->price[$i]]);
+                } else if ($product_var_count < count($request->brands)) {
+
+                    if ($product_var_count > $i) {
+
+                        ProductVariant::where('id', $request->product_var_id[$i])->update([
+                            'brand' => $request->brands[$i],
+                            'sku' => $request->sku[$i]
+                        ]);
+                    } else {
+
+                        ProductVariant::create([
+                            'product_id' => $id,
+                            'brand' => $request->brands[$i],
+                            'sku' => $request->sku[$i]
+                        ]);
+                    }
+                } else {
+
+                    for($x=0; $x < count($product_variant_del_id);$x++){
+                        if($product_var_count > count($request->brands)){
+                            if(count($request->brands) > $x){
+                                ProductVariant::where('id',$request->product_var_id[$x])->update([
+                                    'brand'=>$request->brands[$x],
+                                    'sku'=>$request->sku[$x]
+                                ]);
+                            }
+                            else{
+                                ProductVariant::whereNotIn('id',$request->product_var_id)->where('product_id',$id)->delete();
+                            }
+                        }
+                    }
+                }
+            }
+            DB::commit();
+            $msg = "Product updated successfully";
+            return redirect()->route('products.index')->with(['success' => $msg]);
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+    }
+
+delete function Laravel
+========================================================================================================
+ public function destroy(string $id)
+    {
+
+        try {
+            $childRecords = Products::where('id', $id)->count();
+            if ($childRecords > 0) {
+                $product = Products::find($id);
+                $productVariant = ProductVariant::where('product_id', $id);
+                $product->delete();
+                $productVariant->delete();
+                $msg = "Product deleted successfully";
+                return response()->json(['status' => true, 'msg' => 'success'], 200);
+            } else {
+                return response()->json(['status' => false, 'msg' => ''], 200);
+            }
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+
+    }
+
+input number validation
+=====================================================================================================
+function isNumber(evt) {
+    evt = (evt) ? evt : window.event;
+    var charcode = (evt.which) ? evt.which : evt.keycode;
+    if (charcode > 31 && (charcode < 48 || charcode > 57)) {
+        return false;
+    }
+    return true;
+}
+
+page header setting
+===========================================================================================================
+<!doctype html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Trader product</title>
+    <meta name="base_url" content="{{url('/')}}" />
+	<meta name="csrf-token" content="{{ csrf_token() }}" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+  </head>
+  <body>
+
+
+  </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe" crossorigin="anonymous"></script>
+  </body>
+</html>
+
+<!-- Jquery links -->
+<script src='https://code.jquery.com/jquery-3.4.1.min.js'></script>
+<script src='https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js'></script>
+<!-- js link file -->
+<script src="{{asset('js/frontend/add_to_product.js')}}"></script>
+
+
+=======================================================================================================
+edit blade creating
+===================
+ <select class="form-select" id="AddCategory" name="category">
+<option value="">Select Category</option>
+@foreach($category as $c)
+<option value="{{$c->id}}" {{$product->category == $c->id ? 'selected' : ''}}>{{$c->name}}</option>
+ @endforeach
+</select>
+
+array image view 
+==================
+     <div class="mb-4">
+                      <h5 class="mb-3">Display images</h5>
+                      <input id="fancy-file-upload" type="file" name="product_images[]" accept=".jpg, .png, image/jpeg, image/png" multiple>
+                      @if(!empty($product->product_images))
+                        @foreach(explode(',',$product->product_images) as $image)
+                            <img src="{{asset($image)}}" alt="Product Images" width=100 height=100>
+                        @endforeach
+                        @error('product_images')<span class="text-danger">{{$message}}</span>@enderror
+                      @endif
+                    </div>
+
+
+important formData
+===================
+<form action="{{route('products.update',$product->id)}}" method="POST" enctype="multipart/form-data">
+
+
+
+
+data table lists the view datas
+=================================
+
+ public function product_lists(Request $request)
+    {
+
+        try {
+
+            $category = Products::select('*');
+            $categorycount = Products::select('*');
+
+            if (isset($request->searchdata) && $request->searchdata != '') {
+                $category->where('name', 'like', '%' . $request->searchdata . '%')->orWhere('price', 'like', '%' . $request->searchdata . '%')->orWhere('category', 'like', '%' . $request->searchdata . '%')->orWhere('date', 'like', '%' . $request->searchdata . '%');
+                $categorycount->where('name', 'like', '%' . $request->searchdata . '%')->orWhere('price', 'like', '%' . $request->searchdata . '%')->orWhere('category', 'like', '%' . $request->searchdata . '%')->orWhere('date', 'like', '%' . $request->searchdata . '%');
+            }
+
+            $totalcount = $categorycount->get();
+            $totalcount = count($totalcount);
+
+            $allemp = $category->orderBy('id', 'desc')->take($request->length)->skip($request->start)->get();
+
+            $arr = array();
+            $i = $request->start + 1;
+            
+            foreach ($allemp as $val) {
+                //image view variables
+                $url = url('/');
+                $img = explode(',', $val->product_images);
+                $product_img = $url . '/' . $img[0];
+
+                foreach(explode(',',$val->category_name->category_name) as $category_new){
+                    $var['category'] = $category_new;
+                }
+                $var['id'] = $val->id;
+                $var['product_name'] = (isset($val->product_name)) ? $val->product_name : '';
+                $var['product_img'] = $product_img;
+                $var['sale_price'] = (isset($val->sale_price)) ? $val->sale_price : '';
+                $var['stock'] = (isset($val->stock)) ? $val->stock : '';
+                $var['date'] = (isset($val->created_at)) ? $val->created_at->todatestring() : '';
+
+                $var['index'] = $i++;
+                array_push($arr, $var);
+            }
+          
+            $data['draw'] = $request->draw;
+            $data['recordsTotal'] = $totalcount;
+            $data['recordsFiltered'] = $totalcount;
+            $data['data'] = $arr;
+
+            return json_encode($data);
+
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage())->withInput();
+        }
+    }
